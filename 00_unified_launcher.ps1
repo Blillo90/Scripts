@@ -1,310 +1,342 @@
-# 00_unified_launcher.ps1 — Unified Service Desk Toolkit (Básico / Avanzado)
-# Ejecutar como Administrador
-$ErrorActionPreference = 'SilentlyContinue'
-function Title($t){ Write-Host "`n=== $t ===`n" -ForegroundColor Cyan }
-function Pause(){ Write-Host ; Read-Host "Pulsa ENTER para continuar..." | Out-Null }
+﻿# 00_unified_launcher.ps1
+# Unified Service Desk Toolkit — Pretty Launcher
+# v1.3 — by malaguita
+[CmdletBinding()] param()
+$ErrorActionPreference = 'Continue'
 
-# Logging
-$logFolder = "C:\SDToolLogs"
-if (-not (Test-Path $logFolder)) { New-Item -Path $logFolder -ItemType Directory -Force | Out-Null }
-$stamp = (Get-Date).ToString("yyyyMMdd_HHmmss")
-$comp = $env:COMPUTERNAME
-$user = $env:USERNAME
-$logFile = Join-Path $logFolder ("UnifiedToolkit_" + $stamp + "_" + $comp + "_" + $user + ".txt")
-try { Start-Transcript -Path $logFile -Force } catch {}
+# ===== Banner =====
+function Show-Banner {
+  Clear-Host
+@'
+              
 
-# Set working dir
-$base = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $base
+                          $$\   $$\           $$\           $$$$$$$\                      $$\             
+                          $$ |  $$ |          $$ |          $$  __$$\                     $$ |            
+                          $$ |  $$ | $$$$$$\  $$ | $$$$$$\  $$ |  $$ | $$$$$$\   $$$$$$$\ $$ |  $$\       
+                          $$$$$$$$ |$$  __$$\ $$ |$$  __$$\ $$ |  $$ |$$  __$$\ $$  _____|$$ | $$  |      
+                          $$  __$$ |$$$$$$$$ |$$ |$$ /  $$ |$$ |  $$ |$$$$$$$$ |\$$$$$$\  $$$$$$  /       
+                          $$ |  $$ |$$   ____|$$ |$$ |  $$ |$$ |  $$ |$$   ____| \____$$\ $$  _$$<        
+                          $$ |  $$ |\$$$$$$$\ $$ |$$$$$$$  |$$$$$$$  |\$$$$$$$\ $$$$$$$  |$$ | \$$\       
+                          \__|  \__| \_______|\__|$$  ____/ \_______/  \_______|\_______/ \__|  \__|      
+                                                  $$ |                                                    
+                                                  $$ |                                                    
+                                                  \__|       
+                   $$$$$$$$\                  $$\ $$\       $$\   $$\                       $$\        $$$$$$\  
+                   \__$$  __|                 $$ |$$ |      \__|  $$ |                    $$$$ |      $$  __$$\ 
+                      $$ | $$$$$$\   $$$$$$\  $$ |$$ |  $$\ $$\ $$$$$$\         $$\    $$\\_$$ |      \__/  $$ |
+                      $$ |$$  __$$\ $$  __$$\ $$ |$$ | $$  |$$ |\_$$  _|        \$$\  $$  | $$ |       $$$$$$  |
+                      $$ |$$ /  $$ |$$ /  $$ |$$ |$$$$$$  / $$ |  $$ |           \$$\$$  /  $$ |      $$  ____/ 
+                      $$ |$$ |  $$ |$$ |  $$ |$$ |$$  _$$<  $$ |  $$ |$$\         \$$$  /   $$ |      $$ |      
+                      $$ |\$$$$$$  |\$$$$$$  |$$ |$$ | \$$\ $$ |  \$$$$  |         \$  /  $$$$$$\ $$\ $$$$$$$$\ 
+                      \__| \______/  \______/ \__|\__|  \__|\__|   \____/           \_/   \______|\__|\________|
 
-# ExecutionPolicy helper
-Write-Host "Comprobando ExecutionPolicy..." -ForegroundColor Cyan
+
+                                                      By Malaguita
+'@ | Write-Host -ForegroundColor Magenta
+  Write-Host ""
+}
+
+# ===== UI helpers bonitos =====
+try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new() } catch {}
+
+function Get-ConsoleWidth { 
+  try { return $Host.UI.RawUI.WindowSize.Width } catch { return 100 }
+}
+
+function Write-Panel {
+  param(
+    [Parameter(Mandatory)][string]$Title,
+    [Parameter(Mandatory)][string]$Subtitle,
+    [ConsoleColor]$Color = 'Green',
+    [int]$MaxWidth = 76
+  )
+  $w = [Math]::Min((Get-ConsoleWidth) - 4, $MaxWidth)
+  if ($w -lt 40) { $w = 40 }
+
+  $leftPad = [Math]::Floor(((Get-ConsoleWidth) - $w) / 2)
+  $L = '╭' + ('─' * ($w-2)) + '╮'
+  $S = '├' + ('─' * ($w-2)) + '┤'
+  $R = '╰' + ('─' * ($w-2)) + '╯'
+
+  function _w($s,[ConsoleColor]$c){ (' ' * $leftPad) + $s | Write-Host -ForegroundColor $c }
+  function _line([string]$t){
+    $t = ' ' + $t.Trim() + ' '
+    if ($t.Length -gt ($w-2)) { $t = $t.Substring(0, ($w-5)) + '… ' }
+    $pad = ($w-2 - $t.Length)
+    $l = [Math]::Floor($pad/2); $r = [Math]::Ceiling($pad/2)
+    return '│' + (' ' * $l) + $t + (' ' * $r) + '│'
+  }
+
+  _w $L $Color
+  _w (_line $Title) $Color
+  _w $S $Color
+  _w (_line $Subtitle) $Color
+  _w $R $Color
+  Write-Host ''
+}
+
+function Write-MenuList {
+  param(
+    [Parameter(Mandatory)][string[]]$Items,
+    [int]$Start = 1,
+    [int]$Indent = 2,
+    [ConsoleColor]$NumberColor = 'Cyan',
+    [ConsoleColor]$TextColor = 'White'
+  )
+  $numW = ([string]($Items.Count + $Start - 1)).Length
+  $prefix = ' ' * $Indent
+  $i = $Start
+  foreach($txt in $Items){
+    $num = ('[{0}]' -f $i.ToString().PadLeft($numW))
+    Write-Host ($prefix + $num + '  ') -NoNewline -ForegroundColor $NumberColor
+    Write-Host $txt -ForegroundColor $TextColor
+    $i++
+  }
+  Write-Host ''
+}
+
+# ===== Invocador unificado (.ps1 con spinner; DISM/SFC en streaming) =====
+function Pause { Write-Host; Read-Host "Pulsa ENTER para continuar..." | Out-Null }
+
+function Invoke-TaskWithSpinner {
+  param(
+    [Parameter(Mandatory)][string]$ScriptPath,   # .ps1 o .exe
+    [array]$Params = @(),
+    [string]$Message = $null
+  )
+  if (-not $Message) { $Message = "Ejecutando $([IO.Path]::GetFileName($ScriptPath))" }
+
+  # --- Normaliza a ruta completa ---
+  function Resolve-FullPath([string]$p) {
+    if ([IO.Path]::IsPathRooted($p)) { return $p }
+    if ($script:ToolRoot) { return (Join-Path $script:ToolRoot $p) }
+    return (Resolve-Path -LiteralPath $p).Path
+  }
+
+  $full = Resolve-FullPath $ScriptPath
+  if (-not (Test-Path -LiteralPath $full)) {
+    Write-Host "[✗] No se encuentra: $full" -ForegroundColor Red
+    return
+  }
+
+  $isPs1 = $full -match '\.ps1$'
+  if ($isPs1) {
+    # PS1 -> Job + spinner + recoger salida
+    $psExe = (Get-Command powershell).Source
+    $alist = @('-NoProfile','-ExecutionPolicy','Bypass','-File', $full) + $Params
+
+    Write-Host ""; Write-Host "[>] $Message" -ForegroundColor Cyan
+    $job = Start-Job -ScriptBlock {
+      param($psExe,$alist,$wd)
+      Set-Location $wd
+      $InformationPreference = 'Continue'
+      & $psExe @alist
+    } -ArgumentList $psExe,$alist,$script:ToolRoot
+
+    $spin='|','/','-','\'; $i=0
+    while (($job.State -eq 'Running') -or ($job.State -eq 'NotStarted')) {
+      Write-Host -NoNewline ("`r  {0}  " -f $spin[$i % $spin.Count]) -ForegroundColor Yellow
+      Start-Sleep -Milliseconds 180; $i++
+    }
+    Write-Host "`r   " -NoNewline
+
+    # Streams
+    Receive-Job $job -Keep | Out-Host                                # Output
+    $null = Receive-Job $job -Keep -InformationAction Continue -InformationVariable iv -ErrorAction SilentlyContinue
+    if ($iv) { $iv | ForEach-Object { $_.MessageData } | Out-Host }  # Write-Host
+    $null = Receive-Job $job -Keep -WarningAction Continue -WarningVariable wv -ErrorAction SilentlyContinue
+    if ($wv) { Write-Host "`n[!] Avisos:" -ForegroundColor Yellow; $wv | Out-String | Write-Host -ForegroundColor Yellow }
+    $null = Receive-Job $job -Keep -ErrorAction SilentlyContinue -ErrorVariable ev
+    if ($ev) { Write-Host "`n[✗] Errores:" -ForegroundColor Red; $ev | Out-String | Write-Host -ForegroundColor Red }
+
+    Remove-Job $job -Force
+    Write-Host "[✓] Completado." -ForegroundColor Green
+    return
+  }
+
+  # EXE -> si es DISM o SFC, streaming en el mismo proceso
+  $exe = $full
+  $alist = $Params
+  $baseExe = [IO.Path]::GetFileName($exe).ToLower()
+  if ($baseExe -in @('dism.exe','sfc.exe')) {
+    Write-Host ""; Write-Host "[>] $Message (salida en tiempo real)" -ForegroundColor Cyan
+    Push-Location $script:ToolRoot
+    & $exe @alist
+    $exit = $LASTEXITCODE
+    Pop-Location
+    if ($exit -eq 0) { Write-Host "[✓] Completado." -ForegroundColor Green } else { Write-Host "[✗] Fallo ($exit)" -ForegroundColor Red }
+    return
+  }
+
+  # Otros EXE -> proceso con spinner (sin streaming)
+  Write-Host ""; Write-Host "[>] $Message" -ForegroundColor Cyan
+  $p = Start-Process -FilePath $exe -ArgumentList $alist -WindowStyle Hidden -PassThru -WorkingDirectory $script:ToolRoot
+  $spin='|','/','-','\'; $i=0
+  while (-not $p.HasExited) {
+    Write-Host -NoNewline ("`r  {0}  " -f $spin[$i % $spin.Count]) -ForegroundColor Yellow
+    Start-Sleep -Milliseconds 180; $i++
+  }
+  Write-Host "`r   " -NoNewline
+  if ($p.ExitCode -eq 0) { Write-Host "[✓] Completado." -ForegroundColor Green } else { Write-Host "[✗] Fallo ($($p.ExitCode))." -ForegroundColor Red }
+}
+
+# Alias de compatibilidad para los menús
+function Invoke-ScriptWithSpinner {
+  param(
+    [Parameter(Mandatory)][string]$ScriptPath,
+    [array]$Params = @(),
+    [string]$Message = $null
+  )
+  Invoke-TaskWithSpinner -ScriptPath $ScriptPath -Params $Params -Message $Message
+}
+
+
+# ===== Preparación =====
+# Guarda la carpeta raíz del toolkit para usar rutas absolutas en jobs/procesos
+$script:ToolRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $script:ToolRoot
+
+Show-Banner
+Write-Host "ExecutionPolicy (lista):" -ForegroundColor Cyan
 try { Get-ExecutionPolicy -List | Format-Table -AutoSize | Out-Host } catch {}
-try { Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force } catch {}
+try { Set-ExecutionPolicy Bypass -Scope Process -Force } catch {}
 
-function Menu-Basico {
-    while ($true) {
-        Clear-Host
-        Write-Host "== MENÚ BÁSICO (L2 Windows & Office) ==" -ForegroundColor Green
-        Write-Host "1) Diagnóstico rápido (CPU/RAM/Disco/Top procesos)"
-        Write-Host "2) Limpieza temporales y cachés (usuario)"
-        Write-Host "3) Reparación Office (Quick / Online)"
-        Write-Host "4) Limpiar caché de Teams"
-        Write-Host "5) Reset OneDrive (usuario)"
-        Write-Host "6) SFC /scannow + DISM RestoreHealth"
-        Write-Host \"7) PERFILAZO — guardar datos y borrar perfil\"
-        Write-Host \"8) Volver al menú principal\"
-        $opt = Read-Host "Elige opción"
-
-        switch ($opt) {
-            '1' { Title "Diagnóstico rápido"; & powershell -ExecutionPolicy Bypass -File ".\06_quick_diag.ps1"; Pause }
-            '2' { Title "Limpieza temporales"; 
-                  $deep=Read-Host "¿Profunda (+WU/Prefetch)? (S/N)"; $brow=Read-Host "¿Cachés navegadores? (S/N)";
-                  $args=@(); if($deep -match '^[sS]'){$args+='-Deep'}; if($brow -match '^[sS]'){$args+='-BrowserCaches'};
-                  & powershell -ExecutionPolicy Bypass -File ".\01_cleanup.ps1" @args; Pause }
-            '3' { Title "Reparación Office"; 
-                  $quick=Read-Host "Quick Repair? (S/N)"; $online=Read-Host "Online Repair? (S/N)";
-                  $args=@(); if($quick -match '^[sS]'){$args+='-OfficeQuickRepair'}; if($online -match '^[sS]'){$args+='-OfficeOnlineRepair'};
-                  & powershell -ExecutionPolicy Bypass -File ".\09_office_teams_cleanup.ps1" @args; Pause }
-            '4' { Title "Teams cache"; & powershell -ExecutionPolicy Bypass -File ".\09_office_teams_cleanup.ps1" -TeamsOnly; Pause }
-            '5' { Title "OneDrive reset"; $full=Read-Host "¿Limpieza completa adicional? (S/N)"; $args=@(); if($full -match '^[sS]'){$args+='-Full'}; & powershell -ExecutionPolicy Bypass -File ".\10_onedrive_reset.ps1" @args; Pause }
-            '6' { Title "SFC + DISM"; Start-Process DISM.exe "/Online /Cleanup-Image /RestoreHealth" -Wait -NoNewWindow; Start-Process sfc.exe "/scannow" -Wait -NoNewWindow; Pause }
-            '8' { break }
-            
-            '7' {
-                Title "PERFILAZO — copia y borrado de perfil"
-                Write-Host "Este proceso:" -ForegroundColor Yellow
-                Write-Host " - Copia Contacts, Documents, Desktop, Favorites, Pictures y Chrome (AppData) a C:\Shared\<usuario>_<fecha>." -ForegroundColor DarkGray
-                Write-Host " - Requiere que el usuario objetivo NO esté logueado." -ForegroundColor DarkGray
-                Write-Host " - Después, borra el perfil usando WMI (con fallback de carpeta si falla)." -ForegroundColor DarkGray
-                $user = Read-Host "Nombre de usuario del perfil a tratar (ej. jlopez)"
-                $c1 = Read-Host "CONFIRMACIÓN 1: ¿Proceder con la copia para '$user'? (S/N)"
-                if ($c1 -notmatch '^[sS]') { Write-Host "Cancelado." -ForegroundColor Yellow; Pause; break }
-                $c2 = Read-Host "CONFIRMACIÓN 2: ¿Borrar el perfil de '$user' tras la copia? (S/N)"
-                if ($c2 -notmatch '^[sS]') { Write-Host "Se hará SOLO la copia, sin borrado." -ForegroundColor Yellow }
-                $args = @()
-                if ($user) { $args += @('-UserName', $user) }
-                & powershell -ExecutionPolicy Bypass -File ".\12_perfilazo.ps1" @args
-                Write-Host "`n--- RESUMEN ---" -ForegroundColor Cyan
-                Write-Host "Copia en C:\Shared\<usuario>_<fecha>. Consulta el transcript en C:\SDToolLogs\UnifiedToolkit_*.txt" -ForegroundColor DarkGray
-                Pause
-            }
-
-        default {}
-        }
-    }
+if (-not (Test-Path 'C:\SDToolLogs')) {
+    New-Item 'C:\SDToolLogs' -ItemType Directory -Force | Out-Null
 }
 
+$stamp = (Get-Date).ToString('yyyyMMdd_HHmmss')
+$log   = "C:\SDToolLogs\UnifiedToolkit_{0}_{1}_{2}.txt" -f $stamp, $env:COMPUTERNAME, $env:USERNAME
+try { Start-Transcript -Path $log -Force } catch {}
 
-function Menu-Avanzado {
-    while ($true) {
-        Clear-Host
-        Write-Host "== MENÚ AVANZADO (casos puntuales) ==" -ForegroundColor Yellow
-        Write-Host "1) Cisco Secure Client — fix rápido / hard reset"
-        Write-Host "2) Reset Dock (HP/DisplayLink/Thunderbolt)"
-        Write-Host "3) MECM/SCCM — ciclo post bare-metal (Software Center)"
-        Write-Host "4) Purgar registros residuales de una app (con backup .reg)"
-        Write-Host "5) Reparar WMI (Salvage / Reset agresivo)"
-        Write-Host "6) Limpiar/respaldar Event Logs"
-        Write-Host "7) Volver al menú principal"
-        $opt = Read-Host "Elige opción"
+# ===== Menú Básico =====
+function Show-MenuBasic {
+  while ($true) {
+    Write-Panel -Title 'BASICO' -Subtitle 'Tareas frecuentes (elige numero)' -Color Green
+    $basicItems = @(
+      'Diagnostico rapido',
+      'Limpieza temporales',
+      'Reparacion Office (Quick/Online)',
+      'Limpiar cache Teams',
+      'Reset OneDrive',
+      'SFC + DISM',
+      'PERFILAZO (copiar y borrar perfil)',
+      'Volver'
+    )
+    Write-MenuList -Items $basicItems -Start 1 -Indent 2 -NumberColor Cyan -TextColor White
+    $opt = ((Read-Host 'Opcion') -replace '[^\d]','').Trim()
+    switch ($opt) {
+      '1' { Invoke-ScriptWithSpinner ".\06_quick_diag.ps1" -Message "Diagnostico rapido"; Pause }
+      '2' {
+        $p = @(); if ((Read-Host "Profunda (+WU/Prefetch)? (S/N)") -match '^[sS]') { $p += '-Deep' }
+        if ((Read-Host "Incluir caches navegadores? (S/N)") -match '^[sS]') { $p += '-BrowserCaches' }
+        Invoke-ScriptWithSpinner ".\01_cleanup.ps1" -Params $p -Message "Limpieza temporales"; Pause 
+      }
+      '3' {
+        $p = @(); if ((Read-Host "Quick Repair? (S/N)") -match '^[sS]') { $p += '-OfficeQuickRepair' }
+        if ((Read-Host "Online Repair? (S/N)") -match '^[sS]') { $p += '-OfficeOnlineRepair' }
+        Invoke-ScriptWithSpinner ".\09_office_teams_cleanup.ps1" -Params $p -Message "Reparacion Office"; Pause 
+      }
+      '4' { Invoke-ScriptWithSpinner ".\09_office_teams_cleanup.ps1" -Message "Limpiando cache Teams"; Pause }
+      '5' {
+        $p = @(); if ((Read-Host "Limpieza completa adicional? (S/N)") -match '^[sS]') { $p += '-Full' }
+        Invoke-ScriptWithSpinner ".\10_onedrive_reset.ps1" -Params $p -Message "Reset OneDrive"; Pause 
+      }
+      '6' {
+        # DISM (streaming)
+        Invoke-ScriptWithSpinner (Get-Command DISM).Source `
+          -Params @('/Online','/Cleanup-Image','/RestoreHealth') `
+          -Message "DISM /Online /Cleanup-Image /RestoreHealth"
+        # SFC (streaming)
+        Invoke-ScriptWithSpinner (Get-Command sfc).Source `
+          -Params @('/scannow') `
+          -Message "SFC /scannow"
+        Pause
+      }
+      '7' {
+          # Lanza PERFILAZO sin parámetros para que el script muestre la lista de perfiles
+          Invoke-ScriptWithSpinner ".\12_perfilazo.ps1" -Message "Perfilazo (selector de usuarios)"
+          Pause
+          }
 
-        switch ($opt) {
-            '1' { Title "Cisco Secure Client"
-                  $hard=Read-Host "¿Hard reset (Winsock/TCP-IP + perfiles)? (S/N)"
-                  $args=@(); if($hard -match '^[sS]'){ $prof=Read-Host "Ruta perfil XML (ENTER si no)"; if($prof){$args+=@('-HardReset','-ProfileSource',"$prof")} else {$args+='-HardReset'} }
-                  & powershell -ExecutionPolicy Bypass -File ".\03_fix_cisco_secure_client.ps1" @args; Pause }
-            '2' { Title "Reset Dock"
-                  $dl=Read-Host "¿Incluir DisplayLink? (S/N)"; $uh=Read-Host "¿Reset USB Root Hubs? (S/N)"; $dn=Read-Host "¿Reset NICs del dock? (S/N)"
-                  $args=@(); if($dl -match '^[sS]'){$args+='-TryDisplayLink'}; if($uh -match '^[sS]'){$args+='-ResetUSBHubs'}; if($dn -match '^[sS]'){$args+='-ResetDockNICs'}
-                  & powershell -ExecutionPolicy Bypass -File ".\04_reset_dock.ps1" @args; Pause }
-            '3' { Title "MECM/SCCM — kick"
-                  $purge=Read-Host "¿Vaciar ccmcache? (S/N)"; $sec=Read-Host "Segundos entre ciclos (20 por defecto)"
-                  $args=@(); if($purge -match '^[sS]'){$args+='-PurgeCcmCache'}; if($sec -match '^\d+$'){$args+=@('-PolicyWaitSeconds',$sec)}
-                  & powershell -ExecutionPolicy Bypass -File ".\05_mecm_softwarecenter_kick.ps1" @args; Pause }
-            '4' { 
-                  Title "Purgar registros residuales (con backup)"
-                  Write-Host "Este proceso:" -ForegroundColor Yellow
-                  Write-Host " - Busca claves relacionadas en: Uninstall (HKLM/HKCU 32/64), SOFTWARE (HKLM/HKCU), App Paths, y opcionalmente Services." -ForegroundColor DarkGray
-                  Write-Host " - Exporta CADA clave encontrada a .reg dentro de C:\RegBackups\<carpeta_fecha>." -ForegroundColor DarkGray
-                  Write-Host " - Elimina las claves exportadas (si no eliges modo simulación)." -ForegroundColor DarkGray
-                  $app=Read-Host "Nombre de la app"
-                  $incSrv=Read-Host "¿Incluir servicios (HKLM\\SYSTEM\\...\\Services)? (S/N)"
-                  $hkcu=Read-Host "¿Incluir HKCU del usuario actual? (S/N)"
-                  $simu=Read-Host "¿Simulación (no borra, solo muestra y exporta)? (S/N)"
-                  Write-Host ""
-                  $c1 = Read-Host "CONFIRMACIÓN 1: ¿Deseas continuar con la purga de '$app'? (S/N)"
-                  if ($c1 -notmatch '^[sS]') { Write-Host "Cancelado." -ForegroundColor Yellow; Pause; break }
-                  $c2 = Read-Host "CONFIRMACIÓN 2: Esto eliminará claves del Registro (con backup). ¿Continuar? (S/N)"
-                  if ($c2 -notmatch '^[sS]') { Write-Host "Cancelado." -ForegroundColor Yellow; Pause; break }
-
-                  $args=@(); if($app){$args+=@('-AppName',$app)}; if($incSrv -match '^[sS]'){$args+='-IncludeServices'}; if($hkcu -match '^[sS]'){$args+='-AlsoCurrentUser'}; if($simu -match '^[sS]'){$args+='-WhatIfOnly'}
-                  & powershell -ExecutionPolicy Bypass -File ".\07_purge_app_registry.ps1" @args
-
-                  Write-Host "`n--- RESUMEN ---" -ForegroundColor Cyan
-                  Write-Host "Copia de seguridad (si se realizó): C:\RegBackups" -ForegroundColor DarkGray
-                  if (Test-Path "C:\RegBackups") {
-                      Write-Host "Contenido de C:\RegBackups (2 niveles):" -ForegroundColor DarkGray
-                      Get-ChildItem "C:\RegBackups" -Recurse -Depth 2 | Select-Object FullName,Length,LastWriteTime | Format-Table -AutoSize
-                  } else {
-                      Write-Host "No se encontró C:\RegBackups (posible modo simulación o sin hallazgos)." -ForegroundColor DarkGray
-                  }
-                  Write-Host "Consulta detallada en el transcript: C:\SDToolLogs\UnifiedToolkit_*.txt" -ForegroundColor DarkGray
-                  Pause 
-            }
-            '5' { 
-                  Title "WMI Repair"
-                  $salv=Read-Host "¿Solo Salvage (recomendado)? (S/N)"
-                  $force=Read-Host "¿Force Reset agresivo? (S/N)"
-                  if ($force -match '^[sS]') {
-                      Write-Host "Este proceso AGRESIVO:" -ForegroundColor Yellow
-                      Write-Host " - Detiene WMI, hace copia del repositorio (\\Windows\\System32\\wbem\\Repository -> *.bak_YYYYMMDD_HHMMSS)" -ForegroundColor DarkGray
-                      Write-Host " - Ejecuta winmgmt /resetrepository y re-registra DLLs + recompila MOFs." -ForegroundColor DarkGray
-                      Write-Host " - Reinicia WMI y verifica consulta básica." -ForegroundColor DarkGray
-                      $c1 = Read-Host "CONFIRMACIÓN 1: ¿Continuar con WMI Reset agresivo? (S/N)"
-                      if ($c1 -notmatch '^[sS]') { Write-Host "Cancelado." -ForegroundColor Yellow; Pause; break }
-                      $c2 = Read-Host "CONFIRMACIÓN 2: Entiendo el impacto y que requiere permisos de admin. ¿Continuar? (S/N)"
-                      if ($c2 -notmatch '^[sS]') { Write-Host "Cancelado." -ForegroundColor Yellow; Pause; break }
-                  }
-
-                  $args=@(); if($salv -match '^[sS]'){$args+='-SalvageOnly'}; if($force -match '^[sS]'){$args+='-ForceReset'}
-                  & powershell -ExecutionPolicy Bypass -File ".\11_repair_wmi.ps1" @args
-
-                  Write-Host "`n--- RESUMEN ---" -ForegroundColor Cyan
-                  $wbem = "$env:WINDIR\System32\wbem"
-                  Write-Host "Listado de $wbem y posibles copias Repository.bak_*:" -ForegroundColor DarkGray
-                  Get-ChildItem $wbem -Force | Where-Object { $_.Name -like 'Repository*' } | Select-Object Name,Length,LastWriteTime | Format-Table -AutoSize
-                  Pause
-            }
-            '6' { 
-                  Title "Event Logs"
-                  $bkp=Read-Host "¿Backup .evtx antes? (S/N)"
-                  $only=Read-Host "¿Solo Application/System/Security/Setup? (S/N)"
-                  if ($bkp -match '^[sS]') {
-                      Write-Host "Este proceso:" -ForegroundColor Yellow
-                      Write-Host " - Exporta los registros seleccionados a .evtx en C:\EventLogBackups\EventLogs_YYYYMMDD_HHMMSS" -ForegroundColor DarkGray
-                      Write-Host " - Limpia el contenido de esos registros con wevtutil cl <log>" -ForegroundColor DarkGray
-                      $c1 = Read-Host "CONFIRMACIÓN 1: ¿Continuar con backup y limpieza de Event Logs? (S/N)"
-                      if ($c1 -notmatch '^[sS]') { Write-Host "Cancelado." -ForegroundColor Yellow; Pause; break }
-                      $c2 = Read-Host "CONFIRMACIÓN 2: Esto vaciará registros del Visor de eventos. ¿Continuar? (S/N)"
-                      if ($c2 -notmatch '^[sS]') { Write-Host "Cancelado." -ForegroundColor Yellow; Pause; break }
-                  }
-
-                  $args=@(); if($bkp -match '^[sS]'){$args+='-Backup'}; if($only -match '^[sS]'){$args+='-OnlyOperational'}
-                  & powershell -ExecutionPolicy Bypass -File ".\08_clear_eventlogs.ps1" @args
-
-                  Write-Host "`n--- RESUMEN ---" -ForegroundColor Cyan
-                  if (Test-Path "C:\EventLogBackups") {
-                      Write-Host "Contenido de C:\EventLogBackups (2 niveles):" -ForegroundColor DarkGray
-                      Get-ChildItem "C:\EventLogBackups" -Recurse -Depth 2 | Select-Object FullName,Length,LastWriteTime | Format-Table -AutoSize
-                  } else {
-                      Write-Host "No hay carpeta de backups de Event Logs (no se hizo backup)." -ForegroundColor DarkGray
-                  }
-                  Write-Host "Estado actual de los logs: listado de nombres disponibles" -ForegroundColor DarkGray
-                  wevtutil el | Sort-Object | Select-Object -First 50 | Format-Table -AutoSize
-                  Pause
-            }
-            '8' { break }
-            
-            '7' {
-                Title "PERFILAZO — copia y borrado de perfil"
-                Write-Host "Este proceso:" -ForegroundColor Yellow
-                Write-Host " - Copia Contacts, Documents, Desktop, Favorites, Pictures y Chrome (AppData) a C:\Shared\<usuario>_<fecha>." -ForegroundColor DarkGray
-                Write-Host " - Requiere que el usuario objetivo NO esté logueado." -ForegroundColor DarkGray
-                Write-Host " - Después, borra el perfil usando WMI (con fallback de carpeta si falla)." -ForegroundColor DarkGray
-                $user = Read-Host "Nombre de usuario del perfil a tratar (ej. jlopez)"
-                $c1 = Read-Host "CONFIRMACIÓN 1: ¿Proceder con la copia para '$user'? (S/N)"
-                if ($c1 -notmatch '^[sS]') { Write-Host "Cancelado." -ForegroundColor Yellow; Pause; break }
-                $c2 = Read-Host "CONFIRMACIÓN 2: ¿Borrar el perfil de '$user' tras la copia? (S/N)"
-                if ($c2 -notmatch '^[sS]') { Write-Host "Se hará SOLO la copia, sin borrado." -ForegroundColor Yellow }
-                $args = @()
-                if ($user) { $args += @('-UserName', $user) }
-                & powershell -ExecutionPolicy Bypass -File ".\12_perfilazo.ps1" @args
-                Write-Host "`n--- RESUMEN ---" -ForegroundColor Cyan
-                Write-Host "Copia en C:\Shared\<usuario>_<fecha>. Consulta el transcript en C:\SDToolLogs\UnifiedToolkit_*.txt" -ForegroundColor DarkGray
-                Pause
-            }
-
-        default {}
-        }
+      '8' { return }   # Volver
+      '0' { return }
+      default { Write-Host "Opcion no valida." -ForegroundColor Red; Start-Sleep -Milliseconds 600 }
     }
+  }
 }
 
+# ===== Menú Avanzado =====
+function Show-MenuAdvanced {
+  while ($true) {
+    Write-Panel -Title 'AVANZADO' -Subtitle 'Acciones sensibles y puntuales' -Color Yellow
+    $advItems = @(
+      'Cisco Secure Client (fix/hard reset)',
+      'Reset Dock (HP/DisplayLink)',
+      'MECM/SCCM — ciclo post bare-metal',
+      'Purgar registro por app (backup .reg)',
+      'Reparar WMI (Salvage/Reset agresivo)',
+      'Limpiar/respaldar Event Logs',
+      'Volver'
+    )
+    Write-MenuList -Items $advItems -Start 1 -Indent 2 -NumberColor Yellow -TextColor White
+    $opt = ((Read-Host 'Opcion') -replace '[^\d]','').Trim()
+    switch ($opt) {
+      '1' {
+        $p = @(); if ((Read-Host "Hard reset? (S/N)") -match '^[sS]') { $xml = Read-Host "Ruta perfil XML (ENTER si no)"; if ($xml) { $p += @('-HardReset', '-ProfileSource', $xml) } else { $p += '-HardReset' } }
+        Invoke-ScriptWithSpinner ".\03_fix_cisco_secure_client.ps1" -Params $p -Message "Cisco Secure Client"; Pause 
+      }
+      '2' {
+        $p = @(); if ((Read-Host "Incluir DisplayLink? (S/N)") -match '^[sS]') { $p += '-TryDisplayLink' }
+        if ((Read-Host "Reset USB Hubs? (S/N)") -match '^[sS]') { $p += '-ResetUSBHubs' }
+        if ((Read-Host "Reset NICs del dock? (S/N)") -match '^[sS]') { $p += '-ResetDockNICs' }
+        Invoke-ScriptWithSpinner ".\04_reset_dock.ps1" -Params $p -Message "Reset Dock"; Pause 
+      }
+      '3' {
+        $p = @(); if ((Read-Host "Vaciar ccmcache? (S/N)") -match '^[sS]') { $p += '-PurgeCcmCache' }
+        $sec = Read-Host "Segundos entre ciclos (20 por defecto)"; if ($sec -match '^\d+$') { $p += @('-PolicyWaitSeconds', $sec) }
+        Invoke-ScriptWithSpinner ".\05_mecm_softwarecenter_kick.ps1" -Params $p -Message "Kick SCCM/MECM"; Pause 
+      }
+      '4' {
+        Write-Host "Se haran backups .reg antes de borrar." -ForegroundColor Yellow
+        $app = Read-Host "Nombre app"; $inc = Read-Host "Incluir Services? (S/N)"; $hk = Read-Host "Incluir HKCU? (S/N)"; $sim = Read-Host "Simulacion (no borra)? (S/N)"
+        $c1 = Read-Host "CONF1 continuar? (S/N)"; if ($c1 -notmatch '^[sS]') { Write-Host "Cancelado."; Pause; return }
+        $c2 = Read-Host "CONF2 eliminar claves (con backup)? (S/N)"; if ($c2 -notmatch '^[sS]') { Write-Host "Cancelado."; Pause; return }
+        $p = @(); if ($app) { $p += @('-AppName', $app) }; if ($inc -match '^[sS]') { $p += '-IncludeServices' }; if ($hk -match '^[sS]') { $p += '-AlsoCurrentUser' }; if ($sim -match '^[sS]') { $p += '-WhatIfOnly' }
+        Invoke-ScriptWithSpinner ".\07_purge_app_registry.ps1" -Params $p -Message "Purgar registro ($app)"; Pause 
+      }
+      '5' {
+        $sal = (Read-Host "Solo Salvage? (S/N)") -match '^[sS]'; $for = (Read-Host "Force Reset agresivo? (S/N)") -match '^[sS]'
+        if ($for) { $x = Read-Host "CONF1 reset agresivo? (S/N)"; if ($x -notmatch '^[sS]') { Pause; return }; $y = Read-Host "CONF2 entiendo impacto. Continuar? (S/N)"; if ($y -notmatch '^[sS]') { Pause; return } }
+        $p = @(); if ($sal) { $p += '-SalvageOnly' }; if ($for) { $p += '-ForceReset' }
+        Invoke-ScriptWithSpinner ".\11_repair_wmi.ps1" -Params $p -Message "WMI Repair"; Pause 
+      }
+      '6' {
+        $b = (Read-Host "Backup .evtx antes? (S/N)") -match '^[sS]'; $o = (Read-Host "Solo App/System/Security/Setup? (S/N)") -match '^[sS]'
+        if ($b) { $x = Read-Host "CONF1 backup+limpieza? (S/N)"; if ($x -notmatch '^[sS]') { Pause; return }; $y = Read-Host "CONF2 vaciar registros? (S/N)"; if ($y -notmatch '^[sS]') { Pause; return } }
+        $p = @(); if ($b) { $p += '-Backup' }; if ($o) { $p += '-OnlyOperational' }
+        Invoke-ScriptWithSpinner ".\08_clear_eventlogs.ps1" -Params $p -Message "Event Logs"; Pause 
+      }
+      '7' { return }   # Volver
+      '0' { return }
+      default { Write-Host "Opcion no valida." -ForegroundColor Red; Start-Sleep -Milliseconds 600 }
+    }
+  }
+}
+
+# ===== MAIN LOOP =====
 while ($true) {
-        Clear-Host
-        Write-Host "== MENÚ AVANZADO (casos puntuales) ==" -ForegroundColor Yellow
-        Write-Host "1) Cisco Secure Client — fix rápido / hard reset"
-        Write-Host "2) Reset Dock (HP/DisplayLink/Thunderbolt)"
-        Write-Host "3) MECM/SCCM — ciclo post bare-metal (Software Center)"
-        Write-Host "4) Purgar registros residuales de una app (con backup .reg)"
-        Write-Host "5) Reparar WMI (Salvage / Reset agresivo)"
-        Write-Host "6) Limpiar/respaldar Event Logs"
-        Write-Host "7) Volver al menú principal"
-        $opt = Read-Host "Elige opción"
-
-        switch ($opt) {
-            '1' { Title "Cisco Secure Client"
-                  $hard=Read-Host "¿Hard reset (Winsock/TCP-IP + perfiles)? (S/N)"
-                  $args=@(); if($hard -match '^[sS]'){ $prof=Read-Host "Ruta perfil XML (ENTER si no)"; if($prof){$args+=@('-HardReset','-ProfileSource',"$prof")} else {$args+='-HardReset'} }
-                  & powershell -ExecutionPolicy Bypass -File ".\03_fix_cisco_secure_client.ps1" @args; Pause }
-            '2' { Title "Reset Dock"
-                  $dl=Read-Host "¿Incluir DisplayLink? (S/N)"; $uh=Read-Host "¿Reset USB Root Hubs? (S/N)"; $dn=Read-Host "¿Reset NICs del dock? (S/N)"
-                  $args=@(); if($dl -match '^[sS]'){$args+='-TryDisplayLink'}; if($uh -match '^[sS]'){$args+='-ResetUSBHubs'}; if($dn -match '^[sS]'){$args+='-ResetDockNICs'}
-                  & powershell -ExecutionPolicy Bypass -File ".\04_reset_dock.ps1" @args; Pause }
-            '3' { Title "MECM/SCCM — kick"
-                  $purge=Read-Host "¿Vaciar ccmcache? (S/N)"; $sec=Read-Host "Segundos entre ciclos (20 por defecto)"
-                  $args=@(); if($purge -match '^[sS]'){$args+='-PurgeCcmCache'}; if($sec -match '^\d+$'){$args+=@('-PolicyWaitSeconds',$sec)}
-                  & powershell -ExecutionPolicy Bypass -File ".\05_mecm_softwarecenter_kick.ps1" @args; Pause }
-            '4' { Title "Purgar registros residuales (con backup)"
-                  $app=Read-Host "Nombre de la app"; $incSrv=Read-Host "¿Incluir servicios? (S/N)"; $hkcu=Read-Host "¿Incluir HKCU? (S/N)"; $simu=Read-Host "¿Simulación (no borra)? (S/N)"
-                  $args=@(); if($app){$args+=@('-AppName',$app)}; if($incSrv -match '^[sS]'){$args+='-IncludeServices'}; if($hkcu -match '^[sS]'){$args+='-AlsoCurrentUser'}; if($simu -match '^[sS]'){$args+='-WhatIfOnly'}
-                  & powershell -ExecutionPolicy Bypass -File ".\07_purge_app_registry.ps1" @args; Pause }
-            '5' { Title "WMI Repair"
-                  $salv=Read-Host "¿Solo Salvage? (S/N)"; $force=Read-Host "¿Force Reset agresivo? (S/N)"
-                  $args=@(); if($salv -match '^[sS]'){$args+='-SalvageOnly'}; if($force -match '^[sS]'){$args+='-ForceReset'}
-                  & powershell -ExecutionPolicy Bypass -File ".\11_repair_wmi.ps1" @args; Pause }
-            '6' { Title "Event Logs"
-                  $bkp=Read-Host "¿Backup .evtx antes? (S/N)"; $only=Read-Host "¿Solo Application/System/Security/Setup? (S/N)"
-                  $args=@(); if($bkp -match '^[sS]'){$args+='-Backup'}; if($only -match '^[sS]'){$args+='-OnlyOperational'}
-                  & powershell -ExecutionPolicy Bypass -File ".\08_clear_eventlogs.ps1" @args; Pause }
-            '8' { break }
-            
-            '7' {
-                Title "PERFILAZO — copia y borrado de perfil"
-                Write-Host "Este proceso:" -ForegroundColor Yellow
-                Write-Host " - Copia Contacts, Documents, Desktop, Favorites, Pictures y Chrome (AppData) a C:\Shared\<usuario>_<fecha>." -ForegroundColor DarkGray
-                Write-Host " - Requiere que el usuario objetivo NO esté logueado." -ForegroundColor DarkGray
-                Write-Host " - Después, borra el perfil usando WMI (con fallback de carpeta si falla)." -ForegroundColor DarkGray
-                $user = Read-Host "Nombre de usuario del perfil a tratar (ej. jlopez)"
-                $c1 = Read-Host "CONFIRMACIÓN 1: ¿Proceder con la copia para '$user'? (S/N)"
-                if ($c1 -notmatch '^[sS]') { Write-Host "Cancelado." -ForegroundColor Yellow; Pause; break }
-                $c2 = Read-Host "CONFIRMACIÓN 2: ¿Borrar el perfil de '$user' tras la copia? (S/N)"
-                if ($c2 -notmatch '^[sS]') { Write-Host "Se hará SOLO la copia, sin borrado." -ForegroundColor Yellow }
-                $args = @()
-                if ($user) { $args += @('-UserName', $user) }
-                & powershell -ExecutionPolicy Bypass -File ".\12_perfilazo.ps1" @args
-                Write-Host "`n--- RESUMEN ---" -ForegroundColor Cyan
-                Write-Host "Copia en C:\Shared\<usuario>_<fecha>. Consulta el transcript en C:\SDToolLogs\UnifiedToolkit_*.txt" -ForegroundColor DarkGray
-                Pause
-            }
-
-        default {}
-        }
-    }
-}
-
-while ($true) {
-    Clear-Host
-    Write-Host "UNIFIED SERVICE DESK TOOLKIT" -ForegroundColor Magenta
-    Write-Host "1) Menú BÁSICO (Windows & Office)"
-    Write-Host "2) Menú AVANZADO (VPN/Docks/SCCM/Registro/WMI/EventLogs)"
-    Write-Host "0) Salir"
-    $ch = Read-Host "Elige"
-
-    switch ($ch) {
-        '1' { Menu-Basico }
-        '2' { Menu-Avanzado }
-        '0' { try { Stop-Transcript } catch {}; break }
-        
-            '7' {
-                Title "PERFILAZO — copia y borrado de perfil"
-                Write-Host "Este proceso:" -ForegroundColor Yellow
-                Write-Host " - Copia Contacts, Documents, Desktop, Favorites, Pictures y Chrome (AppData) a C:\Shared\<usuario>_<fecha>." -ForegroundColor DarkGray
-                Write-Host " - Requiere que el usuario objetivo NO esté logueado." -ForegroundColor DarkGray
-                Write-Host " - Después, borra el perfil usando WMI (con fallback de carpeta si falla)." -ForegroundColor DarkGray
-                $user = Read-Host "Nombre de usuario del perfil a tratar (ej. jlopez)"
-                $c1 = Read-Host "CONFIRMACIÓN 1: ¿Proceder con la copia para '$user'? (S/N)"
-                if ($c1 -notmatch '^[sS]') { Write-Host "Cancelado." -ForegroundColor Yellow; Pause; break }
-                $c2 = Read-Host "CONFIRMACIÓN 2: ¿Borrar el perfil de '$user' tras la copia? (S/N)"
-                if ($c2 -notmatch '^[sS]') { Write-Host "Se hará SOLO la copia, sin borrado." -ForegroundColor Yellow }
-                $args = @()
-                if ($user) { $args += @('-UserName', $user) }
-                & powershell -ExecutionPolicy Bypass -File ".\12_perfilazo.ps1" @args
-                Write-Host "`n--- RESUMEN ---" -ForegroundColor Cyan
-                Write-Host "Copia en C:\Shared\<usuario>_<fecha>. Consulta el transcript en C:\SDToolLogs\UnifiedToolkit_*.txt" -ForegroundColor DarkGray
-                Pause
-            }
-
-        default {}
-    }
+  Show-Banner
+  Write-Host "              [1] Menu BASICO     
+              [2] Menu AVANZADO     
+              [0] Salir
+  
+  " -ForegroundColor DarkCyan
+  $choice = ((Read-Host "Elige") -replace '[^\d]','').Trim()
+  switch ($choice) {
+    '1' { Show-MenuBasic }
+    '2' { Show-MenuAdvanced }
+    '0' { try { Stop-Transcript }catch {}; Write-Host "`nGracias por usar Unified Toolkit — by malaguita" -ForegroundColor DarkYellow; exit }
+    default { Write-Host "Opcion no valida." -ForegroundColor Red; Start-Sleep -Milliseconds 600 }
+  }
 }
